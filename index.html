@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Question Engine</title>
+<meta name="description" content="Solve problems by answering questions. Every answer becomes the input for the next question.">
+<meta name="theme-color" content="#2e4a7a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Questions">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one phone-first column — the live question on top, the growing question tree below */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#1b2430; --muted:#5d6878; --line:#d5dbe3; --accent:#2e4a7a;
+  --down:#2f6db5; --up:#2f8a5b; --split:#7a4fb0; --join:#b07a12; --flip:#b8445f;
+  --display:"Young Serif", Georgia, serif;
+  --body:"Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#12161c; --surface:#1b212a; --ink:#e6eaf0; --muted:#9aa5b4; --line:#2e3744; --accent:#8fb0e6;
+  --down:#6fa6e8; --up:#5fc28c; --split:#b896e6; --join:#e2b04a; --flip:#ec7f98; color-scheme:dark}}
+*{box-sizing:border-box}
+html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:400;font-size:2rem;line-height:1.1;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);margin:4px 0 0;font-size:.95rem;max-width:60ch}
+.stats{font-family:var(--mono);font-size:.78rem;color:var(--muted);display:flex;gap:14px}
+.stats b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+.banner{font-size:.88rem;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.label{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.quote{border-left:3px solid var(--line);padding:2px 0 2px 12px;color:var(--muted);font-size:.95rem;min-width:0;overflow-wrap:anywhere}
+.quote + .quote{border-left-color:var(--join)}
+.question{font-family:var(--display);font-size:1.6rem;line-height:1.25;margin:0;text-wrap:balance;overflow-wrap:anywhere}
+.question.loading{color:var(--muted)}
+textarea,input[type=text],input[type=password]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;resize:vertical}
+textarea{min-height:88px}
+textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-size:.92rem;cursor:pointer;border-radius:999px;padding:8px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+button:hover{border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+.ops{display:flex;gap:6px;flex-wrap:wrap}
+.op{font-family:var(--mono);font-size:.78rem;padding:6px 11px;border-color:currentColor;background:transparent}
+.op[aria-pressed="true"]{background:currentColor}
+.op[aria-pressed="true"] span{color:var(--surface)}
+.c-down{color:var(--down)}.c-up{color:var(--up)}.c-split{color:var(--split)}.c-join{color:var(--join)}.c-flip{color:var(--flip)}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+.spacer{flex:1}
+h2{font-family:var(--display);font-weight:400;font-size:1.25rem;margin:0}
+.switch{display:flex;align-items:center;gap:10px;font-size:.92rem;cursor:pointer}
+.switch input{width:20px;height:20px;accent-color:var(--accent)}
+.tree ul{list-style:none;margin:0;padding-left:16px;border-left:1px solid var(--line)}
+.tree > div > ul{padding-left:0;border-left:0}
+.node{padding:10px 0 4px;min-width:0}
+.node .q{font-weight:700;overflow-wrap:anywhere}
+.node .a{color:var(--muted);overflow-wrap:anywhere}
+.node .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:2px}
+.chip{font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;border:1px solid currentColor;border-radius:999px;padding:1px 7px}
+.node.focus > .body{background:color-mix(in srgb, var(--accent) 10%, transparent);border-radius:8px;margin-left:-8px;padding:4px 8px}
+.link{border:0;background:none;padding:0;color:var(--accent);font-size:.82rem;text-decoration:underline;border-radius:4px}
+.summary{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:.88rem;max-width:calc(100% - 32px);text-align:center}
+@media (prefers-reduced-motion: no-preference){.card.ask{animation:in .25s ease-out}@keyframes in{from{transform:translateY(4px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Question <span>Engine</span></h1>
+      <p class="sub">Every answer becomes the input for the next question. Drill down, climb up, split, join or flip, and the questions never run out.</p>
+    </div>
+    <div class="stats"><span>Asked <b id="sAsked">0</b></span><span>Depth <b id="sDepth">0</b></span></div>
+  </header>
+
+  <div class="banner" id="exampleBanner" hidden>
+    <span>This is an example session so you can see how it works.</span>
+    <button id="fresh1">Start my own</button>
+  </div>
+
+  <section class="card" id="smartCard" hidden>
+    <label class="switch"><input type="checkbox" id="smartToggle"> <span><b>Smart questions</b> — Claude reads your answers and asks about your specifics</span></label>
+    <div class="row" id="codeRow" hidden>
+      <input type="password" id="codeInput" placeholder="Access code" style="flex:1;min-width:0" autocomplete="off">
+      <button id="codeSave">Save code</button>
+    </div>
+  </section>
+
+  <section class="card" id="startCard" hidden>
+    <span class="label">Start with a statement</span>
+    <p class="question" style="font-size:1.3rem">What's the problem, situation or idea you want to question?</p>
+    <input type="text" id="startInput" placeholder="e.g. I can't decide whether to hire a second developer">
+    <div class="row"><button class="primary" id="startBtn">Start questioning</button></div>
+  </section>
+
+  <section class="card ask" id="askCard" hidden>
+    <span class="label" id="askLabel">Next question</span>
+    <div id="sources"></div>
+    <p class="question" id="qText"></p>
+    <label class="label" for="answer">Your answer</label>
+    <textarea id="answer" placeholder="Answer in a sentence or two. Short is fine."></textarea>
+    <div class="row">
+      <button class="primary" id="answerBtn">Answer &amp; next</button>
+      <button id="skipBtn">Different question</button>
+      <span class="spacer"></span>
+      <button id="upBtn" title="Question the previous answer instead">Back a step</button>
+    </div>
+    <div>
+      <span class="label">Operator</span>
+      <div class="ops" id="ops" style="margin-top:6px"></div>
+    </div>
+    <p class="hint" id="opHint"></p>
+  </section>
+
+  <section class="card" id="summaryCard" hidden>
+    <div class="row"><h2>Summary</h2><span class="spacer"></span><button id="copySummary">Copy summary</button></div>
+    <p class="summary" id="summaryText"></p>
+  </section>
+
+  <section class="card tree" id="treeCard" hidden>
+    <div class="row"><h2>Question tree</h2><span class="spacer"></span><button id="fresh2">New session</button></div>
+    <div class="row">
+      <button id="copyBtn">Copy outline</button>
+      <button id="copyPrompt">Copy as AI prompt</button>
+      <button id="summaryBtn" hidden>Summarise with Claude</button>
+    </div>
+    <p class="hint">Tap “Ask from here” on any answer to branch off in a new direction.</p>
+    <div id="tree"></div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const OPS = {
+  down:{name:"Drill down",hint:"Goes deeper into causes and mechanics: why and how.",
+    qs:["Why is that?","How does that happen?","What causes that?","Why does that matter?","How do you know it works that way?","What's behind that?"]},
+  up:{name:"Climb up",hint:"Moves toward the underlying goal or need.",
+    qs:["What is that for?","What would that give you?","If that were sorted, what would change?","What bigger goal does that serve?","Why do you want that?"]},
+  split:{name:"Split",hint:"Breaks the answer into who, what, when, where, why and how.",
+    qs:["Who is involved in this?","What exactly is happening here?","When does this happen?","Where does this happen?","Why does this happen?","How does this happen?"]},
+  join:{name:"Join",hint:"Connects this answer with another one from earlier in the tree.",
+    qs:["How does this relate to the other answer?","Does one of these cause the other?","What do these two have in common?","Which of these two matters more?","What happens if both are true at once?","Could one fix the other?"]},
+  flip:{name:"Flip",hint:"Reverses, exaggerates or reframes the answer.",
+    qs:["What if the opposite were true?","What if this were ten times bigger?","What if this didn't exist at all?","How would someone on the other side see this?","What did this look like a year ago?","What will this look like a year from now?","What evidence supports this?","What would change your mind about this?"]}
+};
+const ORDER = ["down","split","up","join","flip"];
+const KEY = "question-engine-v1", PREF = "question-engine-prefs";
+
+const EXAMPLE = {example:true, seq:6, focus:"n5", nodes:[
+  {id:"n0",parent:null,op:null,q:null,a:"Our jobs keep running over schedule."},
+  {id:"n1",parent:"n0",op:"down",q:"Why is that?",a:"Materials often arrive a day or two late."},
+  {id:"n2",parent:"n1",op:"down",q:"What causes that?",a:"Orders go in late because quotes get approved at the last minute."},
+  {id:"n3",parent:"n0",op:"split",q:"Who is involved in this?",a:"The estimator, the site supervisor and the client."},
+  {id:"n4",parent:"n2",op:"up",q:"What would that give you?",a:"If orders went in a week earlier we'd have a buffer."},
+  {id:"n5",parent:"n4",op:"join",q:"Does one of these cause the other?",a:"The client sits on the quote, so nobody can order.",join:"n3"}
+]};
+
+let S, pending = null, loading = false, reqId = 0, toastT, summary = "";
+let api = {ok:false, needsCode:false};
+let prefs = {smart:false, code:""};
+const $ = id => document.getElementById(id);
+
+function load(){ try{ const r = localStorage.getItem(KEY); if(r) return JSON.parse(r);}catch(e){} return structuredClone(EXAMPLE); }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function loadPrefs(){ try{ Object.assign(prefs, JSON.parse(localStorage.getItem(PREF)||"{}")); }catch(e){} }
+function savePrefs(){ try{ localStorage.setItem(PREF, JSON.stringify(prefs)); }catch(e){} }
+const node = id => S.nodes.find(n => n.id === id);
+const kids = id => S.nodes.filter(n => n.parent === id);
+function depth(n){ let d=0; while(n && n.parent){ d++; n = node(n.parent);} return d; }
+function lineage(n){ const s=new Set(); while(n){ s.add(n.id); n = n.parent && node(n.parent);} return s; }
+function pathTo(n){ const p=[]; while(n){ p.unshift({q:n.q, a:n.a}); n = n.parent && node(n.parent);} return p; }
+const askedOn = id => kids(id).map(k => k.q);
+const smartOn = () => api.ok && prefs.smart && (!api.needsCode || prefs.code);
+
+function pickOp(){
+  const f = node(S.focus), last = f && f.op;
+  const counts = Object.fromEntries(ORDER.map(o => [o, S.nodes.filter(n => n.op === o).length]));
+  const avail = ORDER.filter(o => o !== last && (o !== "join" || joinCandidates().length));
+  avail.sort((a,b) => counts[a]-counts[b]);
+  return avail[0] || "down";
+}
+function joinCandidates(){
+  const line = lineage(node(S.focus));
+  let c = S.nodes.filter(n => !line.has(n.id) && n.a);
+  if(!c.length) c = S.nodes.filter(n => n.id !== S.focus && n.a);
+  return c;
+}
+function mechQuestion(op, avoidText){
+  const used = new Set(askedOn(S.focus)), list = OPS[op].qs;
+  let choices = list.filter(q => !used.has(q) && q !== avoidText);
+  if(op === "split"){ const next = list.find(q => !used.has(q) && q !== avoidText); choices = next ? [next] : []; }
+  if(!choices.length) choices = list.filter(q => q !== avoidText);
+  return choices[Math.floor(Math.random()*choices.length)];
+}
+async function ask(op, avoidText){
+  let join = null;
+  if(op === "join"){ const c = joinCandidates(); join = c[Math.floor(Math.random()*c.length)]?.id || null; }
+  const my = ++reqId;
+  if(!smartOn()){ pending = {op, q:mechQuestion(op, avoidText), join}; loading = false; render(); return; }
+  pending = {op, q:"", join}; loading = true; render();
+  try{
+    const avoid = askedOn(S.focus); if(avoidText) avoid.push(avoidText);
+    const r = await fetch("/api/ask", {method:"POST", headers:{"content-type":"application/json","x-access-code":prefs.code||""},
+      body: JSON.stringify({op, path:pathTo(node(S.focus)), join: join ? node(join).a : null, avoid})});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.question) throw new Error(d.error || "Claude didn't answer");
+    if(my !== reqId) return;
+    pending = {op, q:d.question, join, smart:true};
+  }catch(e){
+    if(my !== reqId) return;
+    pending = {op, q:mechQuestion(op, avoidText), join};
+    toast(/code/i.test(e.message) ? "Access code is wrong. Using built-in questions." : "Claude is unavailable. Using built-in questions.");
+  }
+  loading = false; render();
+}
+
+function render(){
+  const empty = !S.nodes.length;
+  $("startCard").hidden = !empty;
+  $("askCard").hidden = empty;
+  $("treeCard").hidden = empty;
+  $("exampleBanner").hidden = !S.example;
+  $("smartCard").hidden = !api.ok;
+  $("smartToggle").checked = prefs.smart;
+  $("codeRow").hidden = !(api.ok && api.needsCode && prefs.smart);
+  $("summaryBtn").hidden = !smartOn() || S.nodes.length < 3;
+  $("summaryCard").hidden = !summary;
+  $("summaryText").textContent = summary;
+  $("sAsked").textContent = Math.max(0, S.nodes.length - 1);
+  $("sDepth").textContent = S.nodes.reduce((m,n) => Math.max(m, depth(n)), 0);
+  if(empty || !pending) return;
+
+  const f = node(S.focus);
+  let src = `<div class="quote">${esc(f.a)}</div>`;
+  if(pending.join && node(pending.join)) src += `<div class="quote">${esc(node(pending.join).a)}</div>`;
+  $("sources").innerHTML = src;
+  $("qText").textContent = loading ? "Thinking up a question…" : pending.q;
+  $("qText").classList.toggle("loading", loading);
+  $("askLabel").innerHTML = `Next question · <span class="c-${pending.op}">${OPS[pending.op].name}</span>${pending.smart ? " · Claude" : ""}`;
+  $("opHint").textContent = OPS[pending.op].hint;
+  $("upBtn").disabled = !f.parent;
+  $("answerBtn").disabled = loading;
+  $("skipBtn").disabled = loading;
+
+  const canJoin = joinCandidates().length > 0;
+  $("ops").innerHTML = ORDER.map(o =>
+    `<button class="op c-${o}" data-op="${o}" aria-pressed="${o===pending.op}" ${(o==="join"&&!canJoin)||loading?"disabled":""}><span>${OPS[o].name}</span></button>`).join("");
+  $("tree").innerHTML = "<ul>" + renderNode(S.nodes.find(n => !n.parent)) + "</ul>";
+}
+function renderNode(n){
+  const focus = n.id === S.focus;
+  const meta = n.op ? `<div class="meta"><span class="chip c-${n.op}">${OPS[n.op].name}</span></div>` : `<div class="meta"><span class="chip" style="color:var(--muted)">Start</span></div>`;
+  const q = n.q ? `<div class="q">${esc(n.q)}</div>` : "";
+  const joined = n.join && node(n.join) ? `<div class="a" style="font-size:.85rem">↔ joined with: “${esc(node(n.join).a)}”</div>` : "";
+  const ch = kids(n.id);
+  return `<li class="node${focus?" focus":""}"><div class="body">${meta}${q}<div class="a"${n.q?"":" style=\"color:var(--ink);font-weight:700\""}>${esc(n.a)}</div>${joined}
+    ${focus ? `<span class="hint">Questioning this now</span>` : `<button class="link" data-focus="${n.id}">Ask from here</button>`}</div>
+    ${ch.length ? "<ul>"+ch.map(renderNode).join("")+"</ul>" : ""}</li>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function setFocus(id){ S.focus = id; save(); ask(pickOp()); }
+function submit(){
+  if(loading || !pending) return;
+  const a = $("answer").value.trim();
+  if(!a){ $("answer").focus(); toast("Type an answer first, even a short one."); return; }
+  const id = "n" + (S.seq++);
+  S.nodes.push({id, parent:S.focus, op:pending.op, q:pending.q, a, join:pending.join||undefined});
+  if(S.example){ S.example = false; }
+  $("answer").value = "";
+  setFocus(id); $("answer").focus();
+}
+function fresh(){ S = {example:false, seq:1, focus:null, nodes:[]}; pending=null; summary=""; reqId++; loading=false; save(); render(); $("startInput").focus(); }
+function start(){
+  const a = $("startInput").value.trim();
+  if(!a){ $("startInput").focus(); return; }
+  S.nodes.push({id:"n0",parent:null,op:null,q:null,a}); $("startInput").value="";
+  setFocus("n0"); $("answer").focus();
+}
+function outline(){
+  const lines = [];
+  (function walk(n, d){
+    const pad = "  ".repeat(d);
+    if(n.q){ lines.push(`${pad}Q (${OPS[n.op].name}): ${n.q}`); lines.push(`${pad}A: ${n.a}`); }
+    else lines.push(`Start: ${n.a}`);
+    kids(n.id).forEach(k => walk(k, d+1));
+  })(S.nodes.find(n => !n.parent), 0);
+  return lines.join("\n");
+}
+function promptText(){
+  return "I've been thinking through a problem by answering a chain of questions. Here is the full question tree.\n" +
+    "Please help me find the root cause, point out anything I seem to be assuming, and suggest the most useful next questions to explore.\n\n" + outline();
+}
+async function copy(text, msg){
+  try{ await navigator.clipboard.writeText(text); toast(msg); }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast(msg); }catch(_){ toast("Couldn't copy. Select the text manually."); } ta.remove(); }
+}
+async function summarise(){
+  const b = $("summaryBtn"); b.disabled = true; b.textContent = "Summarising…";
+  try{
+    const r = await fetch("/api/ask", {method:"POST", headers:{"content-type":"application/json","x-access-code":prefs.code||""},
+      body: JSON.stringify({mode:"summary", tree: outline()})});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.text) throw new Error(d.error || "No summary");
+    summary = d.text; render(); $("summaryCard").scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){ toast("Couldn't summarise right now. Try again in a moment."); }
+  b.disabled = false; b.textContent = "Summarise with Claude";
+}
+function toast(m){ const t=$("toast"); t.textContent=m; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, 2600); }
+
+$("answerBtn").onclick = submit;
+$("answer").addEventListener("keydown", e => { if(e.key==="Enter" && (e.metaKey||e.ctrlKey)) submit(); });
+$("skipBtn").onclick = () => ask(Math.random() < .5 ? pending.op : pickOp(), pending.q);
+$("upBtn").onclick = () => { const f=node(S.focus); if(f.parent) setFocus(f.parent); };
+$("ops").onclick = e => { const b=e.target.closest("[data-op]"); if(!b||b.disabled) return; ask(b.dataset.op); };
+$("tree").onclick = e => { const b=e.target.closest("[data-focus]"); if(!b) return; setFocus(b.dataset.focus); window.scrollTo({top:0,behavior:"smooth"}); $("answer").focus({preventScroll:true}); };
+$("startBtn").onclick = start;
+$("startInput").addEventListener("keydown", e => { if(e.key==="Enter") start(); });
+$("fresh1").onclick = fresh;
+$("fresh2").onclick = () => { const b=$("fresh2"); if(b.dataset.armed){ delete b.dataset.armed; b.textContent="New session"; fresh(); }
+  else { b.dataset.armed=1; b.textContent="Tap again to clear"; setTimeout(()=>{ delete b.dataset.armed; b.textContent="New session"; }, 3000); } };
+$("copyBtn").onclick = () => copy(outline(), "Outline copied");
+$("copyPrompt").onclick = () => copy(promptText(), "Prompt copied. Paste it into any AI chat.");
+$("copySummary").onclick = () => copy(summary, "Summary copied");
+$("summaryBtn").onclick = summarise;
+$("smartToggle").onchange = e => { prefs.smart = e.target.checked; savePrefs(); render(); if(S.nodes.length) ask(pending ? pending.op : pickOp()); };
+$("codeSave").onclick = () => { prefs.code = $("codeInput").value.trim(); $("codeInput").value=""; savePrefs(); toast(prefs.code ? "Code saved" : "Code cleared"); render(); if(S.nodes.length) ask(pending ? pending.op : pickOp()); };
+
+loadPrefs();
+S = load();
+if(S.nodes.length) ask(pickOp()); else render();
+fetch("/api/ask").then(r => r.ok ? r.json() : null).then(d => {
+  if(d){ api = d; render(); if(smartOn() && S.nodes.length) ask(pending.op); }
+}).catch(() => {});
+if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+</script>
+</body>
+</html>
